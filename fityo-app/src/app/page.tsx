@@ -106,6 +106,18 @@ export default function Home() {
       <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-white/5 shadow-lg shadow-black/10">
         <div className="flex items-center justify-between h-14 px-4">
           <span className="font-semibold text-lg tracking-tight text-foreground">Fityo</span>
+          {/* Show applied template name */}
+          {(() => {
+            const dayData = days.find((d) => d.date === selectedDate)
+            const template = dayData?.appliedTemplateId
+              ? templates.find((t) => t.id === dayData.appliedTemplateId)
+              : null
+            return template ? (
+              <span className="text-xs text-muted-foreground bg-white/5 px-2.5 py-1 rounded-full">
+                {template.name}
+              </span>
+            ) : null
+          })()}
           <div className="flex items-center gap-1">
             {canEdit && (
               <button

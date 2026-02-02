@@ -52,6 +52,7 @@ export interface DayData {
     dailyGoals: MacroGoals
     meals: Meal[]
     templateSelected: boolean // Track if user selected a template for this day
+    appliedTemplateId?: string // ID of the template that was applied
 }
 
 interface AppState {
@@ -87,8 +88,9 @@ interface AppState {
     setDayGoals: (date: string, goals: MacroGoals) => void
     addMealToDay: (date: string, meal: Omit<Meal, 'id'>) => void
     updateMealGoals: (date: string, mealId: string, goals: MacroGoals) => void
+    renameMeal: (date: string, mealId: string, name: string) => void
     deleteMealFromDay: (date: string, mealId: string) => void
-    reorderMealsInDay: (date: string, fromIndex: number, toIndex: number) => void
+    setMealsInDay: (date: string, meals: Meal[]) => void
     needsTemplateSelection: (date: string) => boolean
 
     // Selected Date
@@ -206,6 +208,7 @@ export const useAppStore = create<AppState>()(
                     dailyGoals: template.dailyGoals,
                     meals: template.meals.map((m) => ({ id: generateId(), name: m.name, goals: m.goals })),
                     templateSelected: true,
+                    appliedTemplateId: template.id,
                 }
 
                 if (existing) {
@@ -259,14 +262,14 @@ export const useAppStore = create<AppState>()(
                     : d
                 )
             })),
-            reorderMealsInDay: (date, fromIndex, toIndex) => set((state) => ({
-                days: state.days.map((d) => {
-                    if (d.date !== date) return d
-                    const newMeals = [...d.meals]
-                    const [removed] = newMeals.splice(fromIndex, 1)
-                    newMeals.splice(toIndex, 0, removed)
-                    return { ...d, meals: newMeals }
-                })
+            renameMeal: (date, mealId, name) => set((state) => ({
+                days: state.days.map((d) => d.date === date
+                    ? { ...d, meals: d.meals.map((m) => m.id === mealId ? { ...m, name } : m) }
+                    : d
+                )
+            })),
+            setMealsInDay: (date, meals) => set((state) => ({
+                days: state.days.map((d) => d.date === date ? { ...d, meals } : d)
             })),
 
             // Selected Date

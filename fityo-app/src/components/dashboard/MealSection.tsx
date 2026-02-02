@@ -12,18 +12,27 @@ import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence, Reorder } from "framer-motion"
 
 export function MealSection() {
-    const { logs, foods, selectedDate, deleteLog, days, updateMealGoals, deleteMealFromDay, reorderMealsInDay } = useAppStore()
+    const { logs, foods, selectedDate, deleteLog, days, updateMealGoals, renameMeal, deleteMealFromDay, setMealsInDay } = useAppStore()
     const [addModalOpen, setAddModalOpen] = useState(false)
     const [selectedMealId, setSelectedMealId] = useState<string>('')
     const [editGoalsModal, setEditGoalsModal] = useState<{ open: boolean; meal: Meal | null }>({ open: false, meal: null })
+    const [editName, setEditName] = useState('')
     const [editCalories, setEditCalories] = useState('')
     const [editProtein, setEditProtein] = useState('')
     const [editCarbs, setEditCarbs] = useState('')
     const [editFat, setEditFat] = useState('')
 
+    // Local state for reordering
+    const [localMeals, setLocalMeals] = useState<Meal[]>([])
+
     const canEdit = isToday(selectedDate)
     const dayData = days.find((d) => d.date === selectedDate)
     const meals = dayData?.meals || []
+
+    // Sync local meals with store meals when they change
+    React.useEffect(() => {
+        setLocalMeals(meals)
+    }, [meals])
 
     const logsForDate = useMemo(() => {
         return logs.filter((log) => log.date === selectedDate)
@@ -57,6 +66,7 @@ export function MealSection() {
     }
 
     const openEditGoals = (meal: Meal) => {
+        setEditName(meal.name)
         setEditCalories(meal.goals.calories.toString())
         setEditProtein(meal.goals.protein.toString())
         setEditCarbs(meal.goals.carbs.toString())
@@ -66,7 +76,15 @@ export function MealSection() {
 
     const saveGoals = () => {
         if (!editGoalsModal.meal) return
-        updateMealGoals(selectedDate, editGoalsModal.meal.id, {
+        const mealId = editGoalsModal.meal.id
+
+        // Rename if changed
+        if (editName !== editGoalsModal.meal.name) {
+            renameMeal(selectedDate, mealId, editName)
+        }
+
+        // Update goals
+        updateMealGoals(selectedDate, mealId, {
             calories: parseInt(editCalories) || 0,
             protein: parseInt(editProtein) || 0,
             carbs: parseInt(editCarbs) || 0,
@@ -76,13 +94,14 @@ export function MealSection() {
     }
 
     const handleReorder = (newOrder: Meal[]) => {
-        // Find the indices and reorder
-        newOrder.forEach((meal, newIndex) => {
-            const oldIndex = meals.findIndex((m) => m.id === meal.id)
-            if (oldIndex !== newIndex && oldIndex !== -1) {
-                reorderMealsInDay(selectedDate, oldIndex, newIndex)
-            }
-        })
+        setLocalMeals(newOrder)
+    }
+
+    const handleReorderComplete = () => {
+        // Only save to store when drag ends
+        if (JSON.stringify(localMeals.map(m => m.id)) !== JSON.stringify(meals.map(m => m.id))) {
+            setMealsInDay(selectedDate, localMeals)
+        }
     }
 
     if (!dayData) {
@@ -120,7 +139,7 @@ export function MealSection() {
                             <span className="text-sm font-bold text-foreground">{Math.round(totals.calories)}</span>
                             <span className="text-sm text-muted-foreground">/{meal.goals.calories}</span>
                         </div>
-                        {canEdit && meals.length > 1 && (
+                        {canEdit && localMeals.length > 1 && (
                             <button
                                 onClick={() => deleteMealFromDay(selectedDate, meal.id)}
                                 className="p-1.5 rounded-lg text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10 transition-colors"
@@ -216,9 +235,19 @@ export function MealSection() {
         <>
             <div className="space-y-5 pb-8">
                 {canEdit ? (
-                    <Reorder.Group axis="y" values={meals} onReorder={handleReorder} className="space-y-5">
-                        {meals.map((meal) => (
-                            <Reorder.Item key={meal.id} value={meal} className="list-none">
+                    <Reorder.Group
+                        axis="y"
+                        values={localMeals}
+                        onReorder={handleReorder}
+                        className="space-y-5"
+                    >
+                        {localMeals.map((meal) => (
+                            <Reorder.Item
+                                key={meal.id}
+                                value={meal}
+                                className="list-none"
+                                onDragEnd={handleReorderComplete}
+                            >
                                 <MealCard meal={meal} />
                             </Reorder.Item>
                         ))}
@@ -239,9 +268,15 @@ export function MealSection() {
             <Modal
                 isOpen={editGoalsModal.open}
                 onClose={() => setEditGoalsModal({ open: false, meal: null })}
-                title={`Edit ${editGoalsModal.meal?.name} Goals`}
+                title="Edit Meal"
             >
                 <div className="space-y-4">
+                    <Input
+                        label="Meal Name"
+                        placeholder="e.g. Breakfast"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                    />
                     <Input
                         type="number"
                         label="Calories"
@@ -268,7 +303,7 @@ export function MealSection() {
                             onChange={(e) => setEditFat(e.target.value)}
                         />
                     </div>
-                    <Button onClick={saveGoals} className="w-full">Save Goals</Button>
+                    <Button onClick={saveGoals} className="w-full">Save Changes</Button>
                 </div>
             </Modal>
         </>
