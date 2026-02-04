@@ -107,83 +107,87 @@ export function TemplatesTab() {
     }
 
     return (
-        <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-foreground">Templates</h2>
-                <Button variant="glass" size="sm" onClick={openNewTemplate}>
-                    <Plus className="w-4 h-4 mr-1" /> New Template
-                </Button>
+        <div className="h-full flex flex-col">
+            <div className="flex-none space-y-4 pb-4">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-bold text-foreground">Templates</h2>
+                    <Button variant="glass" size="sm" onClick={openNewTemplate}>
+                        <Plus className="w-4 h-4 mr-1" /> New Template
+                    </Button>
+                </div>
+
+                <p className="text-sm text-muted-foreground px-1">
+                    Templates define your day structure. The default template is used for each new day.
+                </p>
             </div>
 
-            <p className="text-sm text-muted-foreground">
-                Templates define your day structure. The default template is used for each new day.
-            </p>
-
-            {templates.length === 0 ? (
-                <Card className="bg-card/20">
-                    <CardContent className="py-12 text-center">
-                        <p className="text-muted-foreground">No templates yet.</p>
-                        <p className="text-sm text-muted-foreground/60">Create one to set up your daily structure!</p>
-                    </CardContent>
-                </Card>
-            ) : (
-                <div className="space-y-2">
-                    <AnimatePresence>
-                        {templates.map((template) => (
-                            <motion.div
-                                key={template.id}
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: "auto" }}
-                                exit={{ opacity: 0, height: 0 }}
-                            >
-                                <Card className={`bg-card/30 ${template.isDefault ? 'border-primary/30' : ''}`}>
-                                    <CardContent className="p-4">
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2">
-                                                    <p className="font-medium text-foreground">{template.name}</p>
-                                                    {template.isDefault && (
-                                                        <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">Default</span>
-                                                    )}
+            <div className="flex-1 overflow-y-auto min-h-0 space-y-2 pt-6 pb-20 no-scrollbar [mask-image:linear-gradient(to_bottom,transparent_0%,black_12px,black_calc(100%-12px),transparent_100%)]">
+                {templates.length === 0 ? (
+                    <Card className="bg-card/20">
+                        <CardContent className="py-12 text-center">
+                            <p className="text-muted-foreground">No templates yet.</p>
+                            <p className="text-sm text-muted-foreground/60">Create one to set up your daily structure!</p>
+                        </CardContent>
+                    </Card>
+                ) : (
+                    <div className="space-y-2">
+                        <AnimatePresence>
+                            {templates.map((template) => (
+                                <motion.div
+                                    key={template.id}
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: "auto" }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                >
+                                    <Card className={`bg-card/30 ${template.isDefault ? 'border-primary/30' : ''}`}>
+                                        <CardContent className="p-4">
+                                            <div className="flex items-start justify-between">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="font-medium text-foreground">{template.name}</p>
+                                                        {template.isDefault && (
+                                                            <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">Default</span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                        {template.dailyGoals.calories} kcal • {template.meals.length} meals
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Meals: {template.meals.map((m) => m.name).join(", ")}
+                                                    </p>
                                                 </div>
-                                                <p className="text-xs text-muted-foreground mt-1">
-                                                    {template.dailyGoals.calories} kcal • {template.meals.length} meals
-                                                </p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    Meals: {template.meals.map((m) => m.name).join(", ")}
-                                                </p>
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                                {!template.isDefault && (
+                                                <div className="flex items-center gap-1">
+                                                    {!template.isDefault && (
+                                                        <button
+                                                            onClick={() => setDefaultTemplate(template.id)}
+                                                            className="p-2 text-muted-foreground hover:text-primary transition-colors"
+                                                            title="Set as default"
+                                                        >
+                                                            <Star className="w-4 h-4" />
+                                                        </button>
+                                                    )}
                                                     <button
-                                                        onClick={() => setDefaultTemplate(template.id)}
-                                                        className="p-2 text-muted-foreground hover:text-primary transition-colors"
-                                                        title="Set as default"
+                                                        onClick={() => openEditTemplate(template)}
+                                                        className="p-2 text-muted-foreground hover:text-foreground transition-colors"
                                                     >
-                                                        <Star className="w-4 h-4" />
+                                                        <Edit2 className="w-4 h-4" />
                                                     </button>
-                                                )}
-                                                <button
-                                                    onClick={() => openEditTemplate(template)}
-                                                    className="p-2 text-muted-foreground hover:text-foreground transition-colors"
-                                                >
-                                                    <Edit2 className="w-4 h-4" />
-                                                </button>
-                                                <button
-                                                    onClick={() => deleteTemplate(template.id)}
-                                                    className="p-2 text-muted-foreground hover:text-red-400 transition-colors"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
+                                                    <button
+                                                        onClick={() => deleteTemplate(template.id)}
+                                                        className="p-2 text-muted-foreground hover:text-red-400 transition-colors"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </motion.div>
-                        ))}
-                    </AnimatePresence>
-                </div>
-            )}
+                                        </CardContent>
+                                    </Card>
+                                </motion.div>
+                            ))}
+                        </AnimatePresence>
+                    </div>
+                )}
+            </div>
 
             {/* Template Editor Modal */}
             <Modal

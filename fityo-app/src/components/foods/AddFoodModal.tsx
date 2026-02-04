@@ -1,13 +1,20 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect, useTransition } from "react"
 import { Modal } from "@/components/ui/modal"
 import { Tabs } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { useAppStore, Food, calculateMacros } from "@/lib/store"
-import { Search, Plus, Check } from "lucide-react"
+import { useAppStore, Meal } from "@/lib/store"
+import { Search, Plus, Check, Loader2 } from "lucide-react"
+import { getFoods, addFood, FoodData } from "@/lib/actions/foods"
+import { addFoodLog } from "@/lib/actions/logs"
+import { calculateMacros } from "@/lib/macros"
+
+interface Food extends FoodData {
+    id: string
+}
 
 interface AddFoodModalProps {
     isOpen: boolean
@@ -20,17 +27,34 @@ export function AddFoodModal({ isOpen, onClose, mealId }: AddFoodModalProps) {
     const [searchQuery, setSearchQuery] = useState("")
     const [selectedFood, setSelectedFood] = useState<Food | null>(null)
     const [grams, setGrams] = useState("")
+    const [foods, setFoods] = useState<Food[]>([])
+    const [isLoading, setIsLoading] = useState(false)
+    const [isPending, startTransition] = useTransition()
 
     // New food form
     const [newFoodName, setNewFoodName] = useState("")
     const [newProtein, setNewProtein] = useState("")
     const [newCarbs, setNewCarbs] = useState("")
     const [newFat, setNewFat] = useState("")
-    const [newCalories, setNewCalories] = useState("") // User-input calories
+    const [newCalories, setNewCalories] = useState("")
 
-    const { foods, addFood, addLog, selectedDate, days } = useAppStore()
+    const { selectedDate, days } = useAppStore()
     const dayData = days.find((d) => d.date === selectedDate)
     const meal = dayData?.meals.find((m) => m.id === mealId)
+
+    // Load foods when modal opens
+    useEffect(() => {
+        if (isOpen) {
+            loadFoods()
+        }
+    }, [isOpen])
+
+    const loadFoods = async () => {
+        setIsLoading(true)
+        const data = await getFoods()
+        setFoods(data as Food[])
+        setIsLoading(false)
+    }
 
     const filteredFoods = foods.filter((food) =>
         food.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -39,43 +63,46 @@ export function AddFoodModal({ isOpen, onClose, mealId }: AddFoodModalProps) {
     const handleAddExisting = () => {
         if (!selectedFood || !grams) return
 
-        addLog({
-            foodId: selectedFood.id,
-            mealId,
-            grams: parseFloat(grams),
-            date: selectedDate,
+        startTransition(async () => {
+            await addFoodLog({
+                food_id: selectedFood.id,
+                meal_type: meal?.name || 'meal',
+                amount_grams: parseFloat(grams),
+                logged_at: selectedDate,
+            })
+            resetAndClose()
         })
-
-        resetAndClose()
     }
 
     const handleCreateAndAdd = () => {
         if (!newFoodName || !newProtein || !newCarbs || !newFat || !newCalories || !grams) return
 
-        const newFood: Omit<Food, 'id'> = {
-            name: newFoodName,
-            proteinPer100g: parseFloat(newProtein),
-            carbsPer100g: parseFloat(newCarbs),
-            fatPer100g: parseFloat(newFat),
-            caloriesPer100g: parseFloat(newCalories), // User-input, not calculated
-        }
+        startTransition(async () => {
+            // First create the food
+            const result = await addFood({
+                name: newFoodName,
+                protein_per_100g: parseFloat(newProtein),
+                carbs_per_100g: parseFloat(newCarbs),
+                fat_per_100g: parseFloat(newFat),
+                calories_per_100g: parseFloat(newCalories),
+            })
 
-        addFood(newFood)
+            if (!result.error) {
+                // Reload foods to get the new food's ID
+                const updatedFoods = await getFoods() as Food[]
+                const createdFood = updatedFoods.find((f) => f.name === newFoodName)
 
-        // Add log after the food is created
-        setTimeout(() => {
-            const createdFood = useAppStore.getState().foods.find((f) => f.name === newFoodName)
-            if (createdFood) {
-                addLog({
-                    foodId: createdFood.id,
-                    mealId,
-                    grams: parseFloat(grams),
-                    date: selectedDate,
-                })
+                if (createdFood) {
+                    await addFoodLog({
+                        food_id: createdFood.id,
+                        meal_type: meal?.name || 'meal',
+                        amount_grams: parseFloat(grams),
+                        logged_at: selectedDate,
+                    })
+                }
             }
-        }, 0)
-
-        resetAndClose()
+            resetAndClose()
+        })
     }
 
     const resetAndClose = () => {
@@ -92,7 +119,13 @@ export function AddFoodModal({ isOpen, onClose, mealId }: AddFoodModalProps) {
     }
 
     const previewMacros = selectedFood && grams
-        ? calculateMacros(selectedFood, parseFloat(grams))
+        ? calculateMacros(
+            selectedFood.protein_per_100g,
+            selectedFood.carbs_per_100g,
+            selectedFood.fat_per_100g,
+            selectedFood.calories_per_100g,
+            parseFloat(grams)
+        )
         : null
 
     return (
@@ -122,21 +155,25 @@ export function AddFoodModal({ isOpen, onClose, mealId }: AddFoodModalProps) {
 
                         {/* Food List */}
                         <div className="max-h-48 overflow-y-auto space-y-2">
-                            {filteredFoods.length > 0 ? (
+                            {isLoading ? (
+                                <div className="flex justify-center py-8">
+                                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                                </div>
+                            ) : filteredFoods.length > 0 ? (
                                 filteredFoods.map((food) => (
                                     <Card
                                         key={food.id}
                                         onClick={() => setSelectedFood(food)}
                                         className={`p-3 cursor-pointer transition-all ${selectedFood?.id === food.id
-                                                ? "border-primary bg-primary/10"
-                                                : "hover:bg-white/5"
+                                            ? "border-primary bg-primary/10"
+                                            : "hover:bg-white/5"
                                             }`}
                                     >
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <p className="font-medium text-foreground">{food.name}</p>
                                                 <p className="text-xs text-muted-foreground">
-                                                    {food.caloriesPer100g} kcal • {food.proteinPer100g}p • {food.carbsPer100g}c • {food.fatPer100g}f per 100g
+                                                    {food.calories_per_100g} kcal • {food.protein_per_100g}p • {food.carbs_per_100g}c • {food.fat_per_100g}f per 100g
                                                 </p>
                                             </div>
                                             {selectedFood?.id === food.id && (
@@ -175,8 +212,11 @@ export function AddFoodModal({ isOpen, onClose, mealId }: AddFoodModalProps) {
                                 <Button
                                     onClick={handleAddExisting}
                                     className="w-full"
-                                    disabled={!grams}
+                                    disabled={!grams || isPending}
                                 >
+                                    {isPending ? (
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    ) : null}
                                     Add to {meal?.name || 'Meal'}
                                 </Button>
                             </div>
@@ -234,9 +274,13 @@ export function AddFoodModal({ isOpen, onClose, mealId }: AddFoodModalProps) {
                         <Button
                             onClick={handleCreateAndAdd}
                             className="w-full"
-                            disabled={!newFoodName || !newProtein || !newCarbs || !newFat || !newCalories || !grams}
+                            disabled={!newFoodName || !newProtein || !newCarbs || !newFat || !newCalories || !grams || isPending}
                         >
-                            <Plus className="w-4 h-4 mr-2" />
+                            {isPending ? (
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                                <Plus className="w-4 h-4 mr-2" />
+                            )}
                             Create & Add to {meal?.name || 'Meal'}
                         </Button>
                     </div>

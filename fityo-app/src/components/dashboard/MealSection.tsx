@@ -1,18 +1,20 @@
 "use client"
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect, useTransition } from "react"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { Plus, Trash2, Edit2, GripVertical } from "lucide-react"
-import { useAppStore, calculateMacros, isToday, Meal } from "@/lib/store"
+import { Plus, Trash2, Edit2, GripVertical, Loader2 } from "lucide-react"
+import { useAppStore, isToday, Meal } from "@/lib/store"
 import { AddFoodModal } from "@/components/foods/AddFoodModal"
 import { Modal } from "@/components/ui/modal"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence, Reorder } from "framer-motion"
+import { getLogsForDate, deleteFoodLog, FoodLogWithFood } from "@/lib/actions/logs"
+import { calculateMacros } from "@/lib/macros"
 
 export function MealSection() {
-    const { logs, foods, selectedDate, deleteLog, days, updateMealGoals, renameMeal, deleteMealFromDay, setMealsInDay } = useAppStore()
+    const { selectedDate, days, updateMealGoals, renameMeal, deleteMealFromDay, setMealsInDay } = useAppStore()
     const [addModalOpen, setAddModalOpen] = useState(false)
     const [selectedMealId, setSelectedMealId] = useState<string>('')
     const [editGoalsModal, setEditGoalsModal] = useState<{ open: boolean; meal: Meal | null }>({ open: false, meal: null })
@@ -22,6 +24,11 @@ export function MealSection() {
     const [editCarbs, setEditCarbs] = useState('')
     const [editFat, setEditFat] = useState('')
 
+    // Database logs
+    const [dbLogs, setDbLogs] = useState<FoodLogWithFood[]>([])
+    const [isLoadingLogs, setIsLoadingLogs] = useState(true)
+    const [isPending, startTransition] = useTransition()
+
     // Local state for reordering
     const [localMeals, setLocalMeals] = useState<Meal[]>([])
 
@@ -29,22 +36,45 @@ export function MealSection() {
     const dayData = days.find((d) => d.date === selectedDate)
     const meals = dayData?.meals || []
 
+    // Load logs from database
+    useEffect(() => {
+        loadLogs()
+    }, [selectedDate])
+
+    const loadLogs = async () => {
+        setIsLoadingLogs(true)
+        const logs = await getLogsForDate(selectedDate)
+        setDbLogs(logs)
+        setIsLoadingLogs(false)
+    }
+
     // Sync local meals with store meals when they change
     React.useEffect(() => {
         setLocalMeals(meals)
     }, [meals])
 
-    const logsForDate = useMemo(() => {
-        return logs.filter((log) => log.date === selectedDate)
-    }, [logs, selectedDate])
-
     const getMealData = (meal: Meal) => {
-        const mealLogs = logsForDate.filter((log) => log.mealId === meal.id)
+        // Filter logs by meal_type matching meal name
+        const mealLogs = dbLogs.filter((log) =>
+            log.meal_type.toLowerCase() === meal.name.toLowerCase()
+        )
+
         const items = mealLogs.map((log) => {
-            const food = foods.find((f) => f.id === log.foodId)
-            if (!food) return null
-            const macros = calculateMacros(food, log.grams)
-            return { id: log.id, name: food.name, grams: log.grams, ...macros }
+            if (!log.foods_library) return null
+            const food = log.foods_library
+            const macros = calculateMacros(
+                food.protein_per_100g,
+                food.carbs_per_100g,
+                food.fat_per_100g,
+                food.calories_per_100g,
+                log.amount_grams
+            )
+            return {
+                id: log.id,
+                name: food.name,
+                grams: log.amount_grams,
+                ...macros
+            }
         }).filter(Boolean)
 
         const totals = items.reduce(
@@ -63,6 +93,13 @@ export function MealSection() {
     const handleAddClick = (mealId: string) => {
         setSelectedMealId(mealId)
         setAddModalOpen(true)
+    }
+
+    const handleDeleteLog = (logId: string) => {
+        startTransition(async () => {
+            await deleteFoodLog(logId)
+            await loadLogs()
+        })
     }
 
     const openEditGoals = (meal: Meal) => {
@@ -102,6 +139,12 @@ export function MealSection() {
         if (JSON.stringify(localMeals.map(m => m.id)) !== JSON.stringify(meals.map(m => m.id))) {
             setMealsInDay(selectedDate, localMeals)
         }
+    }
+
+    // Reload logs when modal closes (new food added)
+    const handleModalClose = () => {
+        setAddModalOpen(false)
+        loadLogs()
     }
 
     if (!dayData) {
@@ -180,43 +223,54 @@ export function MealSection() {
 
                 {/* Food Items */}
                 <div className="bg-black/20 rounded-xl overflow-hidden">
-                    <AnimatePresence>
-                        {items.length > 0 ? (
-                            <div className="divide-y divide-white/5">
-                                {items.map((item) => item && (
-                                    <motion.div
-                                        key={item.id}
-                                        initial={{ opacity: 0, height: 0 }}
-                                        animate={{ opacity: 1, height: "auto" }}
-                                        exit={{ opacity: 0, height: 0 }}
-                                        className="flex items-center justify-between px-3 py-2.5 hover:bg-white/5 transition-colors"
-                                    >
-                                        <div className="flex flex-col">
-                                            <span className="font-medium text-foreground text-sm">{item.name}</span>
-                                            <span className="text-[11px] text-muted-foreground">
-                                                {item.grams}g • {item.protein}p • {item.carbs}c • {item.fat}f
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm font-semibold text-foreground/80">{item.calories}</span>
-                                            {canEdit && (
-                                                <button
-                                                    onClick={() => deleteLog(item.id)}
-                                                    className="p-1 text-muted-foreground hover:text-red-400 transition-colors"
-                                                >
-                                                    <Trash2 className="w-3 h-3" />
-                                                </button>
-                                            )}
-                                        </div>
-                                    </motion.div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="px-3 py-4 text-center text-xs text-muted-foreground/50">
-                                No food logged yet
-                            </div>
-                        )}
-                    </AnimatePresence>
+                    {isLoadingLogs ? (
+                        <div className="flex justify-center py-4">
+                            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : (
+                        <AnimatePresence>
+                            {items.length > 0 ? (
+                                <div className="divide-y divide-white/5">
+                                    {items.map((item) => item && (
+                                        <motion.div
+                                            key={item.id}
+                                            initial={{ opacity: 0, height: 0 }}
+                                            animate={{ opacity: 1, height: "auto" }}
+                                            exit={{ opacity: 0, height: 0 }}
+                                            className="flex items-center justify-between px-3 py-2.5 hover:bg-white/5 transition-colors"
+                                        >
+                                            <div className="flex flex-col">
+                                                <span className="font-medium text-foreground text-sm">{item.name}</span>
+                                                <span className="text-[11px] text-muted-foreground">
+                                                    {item.grams}g • {item.protein}p • {item.carbs}c • {item.fat}f
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-semibold text-foreground/80">{item.calories}</span>
+                                                {canEdit && (
+                                                    <button
+                                                        onClick={() => handleDeleteLog(item.id)}
+                                                        disabled={isPending}
+                                                        className="p-1 text-muted-foreground hover:text-red-400 transition-colors disabled:opacity-50"
+                                                    >
+                                                        {isPending ? (
+                                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                                        ) : (
+                                                            <Trash2 className="w-3 h-3" />
+                                                        )}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="px-3 py-4 text-center text-xs text-muted-foreground/50">
+                                    No food logged yet
+                                </div>
+                            )}
+                        </AnimatePresence>
+                    )}
 
                     {canEdit && (
                         <button
@@ -261,7 +315,7 @@ export function MealSection() {
 
             <AddFoodModal
                 isOpen={addModalOpen}
-                onClose={() => setAddModalOpen(false)}
+                onClose={handleModalClose}
                 mealId={selectedMealId}
             />
 

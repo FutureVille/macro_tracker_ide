@@ -1,44 +1,65 @@
 "use client"
 
-import React, { useMemo, useState } from "react"
+import React, { useMemo, useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { Modal } from "@/components/ui/modal"
 import { Input } from "@/components/ui/input"
-import { useAppStore, calculateMacros, isToday } from "@/lib/store"
-import { Settings } from "lucide-react"
+import { useAppStore, isToday } from "@/lib/store"
+import { Settings, Loader2 } from "lucide-react"
+import { getLogsForDate, FoodLogWithFood } from "@/lib/actions/logs"
+import { calculateMacros } from "@/lib/macros"
 
 export function MacroSummary() {
-    const { logs, foods, selectedDate, days, setDayGoals } = useAppStore()
+    const { selectedDate, days, setDayGoals } = useAppStore()
     const [goalsModalOpen, setGoalsModalOpen] = useState(false)
     const [editCalories, setEditCalories] = useState('')
     const [editProtein, setEditProtein] = useState('')
     const [editCarbs, setEditCarbs] = useState('')
     const [editFat, setEditFat] = useState('')
 
+    // Database logs
+    const [dbLogs, setDbLogs] = useState<FoodLogWithFood[]>([])
+    const [isLoading, setIsLoading] = useState(true)
+
     const canEdit = isToday(selectedDate)
     const dayData = days.find((d) => d.date === selectedDate)
     const goals = dayData?.dailyGoals || { calories: 2400, protein: 180, carbs: 200, fat: 70 }
 
-    // Calculate totals for selected date
-    const totals = useMemo(() => {
-        const logsForDate = logs.filter((log) => log.date === selectedDate)
+    // Load logs from database
+    useEffect(() => {
+        loadLogs()
+    }, [selectedDate])
 
+    const loadLogs = async () => {
+        setIsLoading(true)
+        const logs = await getLogsForDate(selectedDate)
+        setDbLogs(logs)
+        setIsLoading(false)
+    }
+
+    // Calculate totals from database logs
+    const totals = useMemo(() => {
         let totalProtein = 0
         let totalCarbs = 0
         let totalFat = 0
         let totalCalories = 0
 
-        logsForDate.forEach((log) => {
-            const food = foods.find((f) => f.id === log.foodId)
-            if (food) {
-                const macros = calculateMacros(food, log.grams)
-                totalProtein += macros.protein
-                totalCarbs += macros.carbs
-                totalFat += macros.fat
-                totalCalories += macros.calories
-            }
+        dbLogs.forEach((log) => {
+            if (!log.foods_library) return
+            const food = log.foods_library
+            const macros = calculateMacros(
+                food.protein_per_100g,
+                food.carbs_per_100g,
+                food.fat_per_100g,
+                food.calories_per_100g,
+                log.amount_grams
+            )
+            totalProtein += macros.protein
+            totalCarbs += macros.carbs
+            totalFat += macros.fat
+            totalCalories += macros.calories
         })
 
         return {
@@ -47,7 +68,7 @@ export function MacroSummary() {
             fat: Math.round(totalFat),
             calories: totalCalories,
         }
-    }, [logs, foods, selectedDate])
+    }, [dbLogs])
 
     const caloriePercent = Math.min(100, Math.round((totals.calories / goals.calories) * 100))
 
@@ -83,8 +104,17 @@ export function MacroSummary() {
                     <CardContent className="pt-6">
                         <div className="flex justify-between items-start mb-2">
                             <div>
-                                <span className="text-4xl font-bold tracking-tighter text-foreground">{totals.calories}</span>
-                                <span className="text-muted-foreground ml-1">/ {goals.calories} kcal</span>
+                                {isLoading ? (
+                                    <div className="flex items-center gap-2">
+                                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                                        <span className="text-muted-foreground">Loading...</span>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <span className="text-4xl font-bold tracking-tighter text-foreground">{totals.calories}</span>
+                                        <span className="text-muted-foreground ml-1">/ {goals.calories} kcal</span>
+                                    </>
+                                )}
                             </div>
                             <div className="flex items-center gap-2">
                                 <span className="text-sm font-medium text-muted-foreground">{caloriePercent}%</span>
