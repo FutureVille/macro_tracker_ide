@@ -26,12 +26,12 @@ export const metadata: Metadata = {
   description: "Luxury minimalist macro and weight tracking.",
   manifest: "/manifest.json",
   icons: {
-    icon: "/icon-192.png",
-    shortcut: "/icon-192.png",
-    apple: "/icon-192.png",
+    icon: "/icon-512x512.png",
+    shortcut: "/icon-512x512.png",
+    apple: "/icon-512x512.png",
     other: {
       rel: "apple-touch-icon-precomposed",
-      url: "/icon-192.png",
+      url: "/icon-512x512.png",
     },
   },
   appleWebApp: {
