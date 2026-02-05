@@ -7,10 +7,15 @@ import { Input } from "@/components/ui/input"
 import { Modal } from "@/components/ui/modal"
 import { Trash2, Plus, UtensilsCrossed, Loader2 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
-import { getFoods, addFood, deleteFood, FoodData } from "@/lib/actions/foods"
+import { createClient } from "@/lib/supabase/client"
 
-interface Food extends FoodData {
+interface Food {
     id: string
+    name: string
+    protein_per_100g: number
+    carbs_per_100g: number
+    fat_per_100g: number
+    calories_per_100g: number
 }
 
 export function FoodLibrary() {
@@ -18,6 +23,7 @@ export function FoodLibrary() {
     const [isLoading, setIsLoading] = useState(true)
     const [isPending, startTransition] = useTransition()
     const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+    const supabase = createClient()
 
     // New food form
     const [name, setName] = useState("")
@@ -33,8 +39,10 @@ export function FoodLibrary() {
 
     const loadFoods = async () => {
         setIsLoading(true)
-        const data = await getFoods()
-        setFoods(data as Food[])
+        const { data, error } = await supabase.from('foods_library').select('*')
+        if (data) {
+            setFoods(data as Food[])
+        }
         setIsLoading(false)
     }
 
@@ -42,7 +50,7 @@ export function FoodLibrary() {
         if (!name || !protein || !carbs || !fat || !calories) return
 
         startTransition(async () => {
-            const result = await addFood({
+            const { error } = await supabase.from('foods_library').insert({
                 name,
                 protein_per_100g: parseFloat(protein),
                 carbs_per_100g: parseFloat(carbs),
@@ -50,7 +58,7 @@ export function FoodLibrary() {
                 calories_per_100g: parseFloat(calories),
             })
 
-            if (!result.error) {
+            if (!error) {
                 await loadFoods()
                 setName("")
                 setProtein("")
@@ -64,8 +72,8 @@ export function FoodLibrary() {
 
     const handleDelete = (id: string) => {
         startTransition(async () => {
-            const result = await deleteFood(id)
-            if (!result.error) {
+            const { error } = await supabase.from('foods_library').delete().eq('id', id)
+            if (!error) {
                 await loadFoods()
             }
         })

@@ -14,8 +14,28 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
     ResponsiveContainer, AreaChart, Area
 } from 'recharts'
-import { getLogsForRange, FoodLogWithFood } from "@/lib/actions/logs"
-import { getWeightHistory, logWeight as logWeightAction, getTodayWeight, WeightEntry } from "@/lib/actions/weight"
+import { createClient } from "@/lib/supabase/client"
+
+interface FoodLogWithFood {
+    id: string
+    date: string
+    amount_grams: number
+    logged_at: string
+    foods_library: {
+        id: string
+        name: string
+        protein_per_100g: number
+        carbs_per_100g: number
+        fat_per_100g: number
+        calories_per_100g: number
+    }
+}
+
+interface WeightEntry {
+    id: string
+    weight: number
+    logged_at: string
+}
 import { calculateMacros } from "@/lib/macros"
 
 type Period = '7d' | '30d' | '1y' | 'all'
@@ -25,6 +45,7 @@ export default function HistoryPage() {
     const [weightModalOpen, setWeightModalOpen] = useState(false)
     const [newWeight, setNewWeight] = useState("")
     const [isPending, startTransition] = useTransition()
+    const supabase = createClient()
 
     // Database state
     const [logs, setLogs] = useState<FoodLogWithFood[]>([])
@@ -67,14 +88,32 @@ export default function HistoryPage() {
 
     const loadData = async () => {
         setIsLoading(true)
-        const [logsData, weightData, todayWeightData] = await Promise.all([
-            getLogsForRange(dateRange.start, dateRange.end),
-            getWeightHistory(dateRange.start, dateRange.end),
-            getTodayWeight(),
-        ])
-        setLogs(logsData)
-        setWeightHistory(weightData)
-        setTodayWeight(todayWeightData)
+
+        // 1. Logs
+        const { data: logsData } = await supabase
+            .from('daily_logs')
+            .select('*, foods_library!inner(*)')
+            .gte('date', dateRange.start)
+            .lte('date', dateRange.end)
+
+        // 2. Weight History
+        const { data: weightData } = await supabase
+            .from('weight_history')
+            .select('*')
+            .gte('logged_at', dateRange.start)
+            .lte('logged_at', dateRange.end)
+
+        // 3. Today Weight
+        const { data: todayWeightData } = await supabase
+            .from('weight_history')
+            .select('*')
+            .eq('logged_at', todayString)
+            .maybeSingle()
+
+        if (logsData) setLogs(logsData as any as FoodLogWithFood[])
+        if (weightData) setWeightHistory(weightData as WeightEntry[])
+        if (todayWeightData) setTodayWeight(todayWeightData as WeightEntry)
+
         setIsLoading(false)
     }
 
@@ -83,7 +122,14 @@ export default function HistoryPage() {
         if (!newWeight) return
 
         startTransition(async () => {
-            await logWeightAction(parseFloat(newWeight))
+            // Check if exists, delete old one to be safe (simple upset)
+            await supabase.from('weight_history').delete().eq('logged_at', todayString)
+
+            await supabase.from('weight_history').insert({
+                weight: parseFloat(newWeight),
+                logged_at: todayString
+            })
+
             await loadData()
             setNewWeight("")
             setWeightModalOpen(false)

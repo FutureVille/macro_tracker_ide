@@ -8,12 +8,16 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { useAppStore, Meal } from "@/lib/store"
 import { Search, Plus, Check, Loader2 } from "lucide-react"
-import { getFoods, addFood, FoodData } from "@/lib/actions/foods"
-import { addFoodLog } from "@/lib/actions/logs"
+import { createClient } from "@/lib/supabase/client"
 import { calculateMacros } from "@/lib/macros"
 
-interface Food extends FoodData {
+interface Food {
     id: string
+    name: string
+    protein_per_100g: number
+    carbs_per_100g: number
+    fat_per_100g: number
+    calories_per_100g: number
 }
 
 interface AddFoodModalProps {
@@ -30,6 +34,7 @@ export function AddFoodModal({ isOpen, onClose, mealId }: AddFoodModalProps) {
     const [foods, setFoods] = useState<Food[]>([])
     const [isLoading, setIsLoading] = useState(false)
     const [isPending, startTransition] = useTransition()
+    const supabase = createClient()
 
     // New food form
     const [newFoodName, setNewFoodName] = useState("")
@@ -51,8 +56,10 @@ export function AddFoodModal({ isOpen, onClose, mealId }: AddFoodModalProps) {
 
     const loadFoods = async () => {
         setIsLoading(true)
-        const data = await getFoods()
-        setFoods(data as Food[])
+        const { data } = await supabase.from('foods_library').select('*')
+        if (data) {
+            setFoods(data as Food[])
+        }
         setIsLoading(false)
     }
 
@@ -64,11 +71,11 @@ export function AddFoodModal({ isOpen, onClose, mealId }: AddFoodModalProps) {
         if (!selectedFood || !grams) return
 
         startTransition(async () => {
-            await addFoodLog({
+            await supabase.from('daily_logs').insert({
                 food_id: selectedFood.id,
                 meal_type: meal?.name || 'meal',
                 amount_grams: parseFloat(grams),
-                logged_at: selectedDate,
+                date: selectedDate,
             })
             resetAndClose()
         })
@@ -79,27 +86,21 @@ export function AddFoodModal({ isOpen, onClose, mealId }: AddFoodModalProps) {
 
         startTransition(async () => {
             // First create the food
-            const result = await addFood({
+            const { data: createdFood, error: createError } = await supabase.from('foods_library').insert({
                 name: newFoodName,
                 protein_per_100g: parseFloat(newProtein),
                 carbs_per_100g: parseFloat(newCarbs),
                 fat_per_100g: parseFloat(newFat),
                 calories_per_100g: parseFloat(newCalories),
-            })
+            }).select().single()
 
-            if (!result.error) {
-                // Reload foods to get the new food's ID
-                const updatedFoods = await getFoods() as Food[]
-                const createdFood = updatedFoods.find((f) => f.name === newFoodName)
-
-                if (createdFood) {
-                    await addFoodLog({
-                        food_id: createdFood.id,
-                        meal_type: meal?.name || 'meal',
-                        amount_grams: parseFloat(grams),
-                        logged_at: selectedDate,
-                    })
-                }
+            if (!createError && createdFood) {
+                await supabase.from('daily_logs').insert({
+                    food_id: createdFood.id,
+                    meal_type: meal?.name || 'meal',
+                    amount_grams: parseFloat(grams),
+                    date: selectedDate,
+                })
             }
             resetAndClose()
         })

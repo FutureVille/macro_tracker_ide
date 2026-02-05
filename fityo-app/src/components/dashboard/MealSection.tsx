@@ -10,7 +10,22 @@ import { Modal } from "@/components/ui/modal"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence, Reorder } from "framer-motion"
-import { getLogsForDate, deleteFoodLog, FoodLogWithFood } from "@/lib/actions/logs"
+import { createClient } from "@/lib/supabase/client"
+
+interface FoodLogWithFood {
+    id: string
+    date: string
+    meal_type: string
+    amount_grams: number
+    foods_library: {
+        id: string
+        name: string
+        protein_per_100g: number
+        carbs_per_100g: number
+        fat_per_100g: number
+        calories_per_100g: number
+    }
+}
 import { calculateMacros } from "@/lib/macros"
 
 export function MealSection() {
@@ -28,6 +43,7 @@ export function MealSection() {
     const [dbLogs, setDbLogs] = useState<FoodLogWithFood[]>([])
     const [isLoadingLogs, setIsLoadingLogs] = useState(true)
     const [isPending, startTransition] = useTransition()
+    const supabase = createClient()
 
     // Local state for reordering
     const [localMeals, setLocalMeals] = useState<Meal[]>([])
@@ -43,8 +59,10 @@ export function MealSection() {
 
     const loadLogs = async () => {
         setIsLoadingLogs(true)
-        const logs = await getLogsForDate(selectedDate)
-        setDbLogs(logs)
+        const { data } = await supabase.from('daily_logs').select('*, foods_library!inner(*)').eq('date', selectedDate)
+        if (data) {
+            setDbLogs(data as any as FoodLogWithFood[])
+        }
         setIsLoadingLogs(false)
     }
 
@@ -97,7 +115,7 @@ export function MealSection() {
 
     const handleDeleteLog = (logId: string) => {
         startTransition(async () => {
-            await deleteFoodLog(logId)
+            await supabase.from('daily_logs').delete().eq('id', logId)
             await loadLogs()
         })
     }

@@ -1,24 +1,36 @@
 'use client'
 
 import { useState } from 'react'
-import { signIn } from '@/lib/actions/auth'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 import { motion } from 'framer-motion'
 import { Mail, Lock, ArrowRight, Loader2 } from 'lucide-react'
 
 export default function LoginPage() {
     const [error, setError] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
+    const router = useRouter()
+    const supabase = createClient()
 
     async function handleSubmit(formData: FormData) {
         setLoading(true)
         setError(null)
 
-        const result = await signIn(formData)
+        const email = formData.get('email') as string
+        const password = formData.get('password') as string
 
-        if (result?.error) {
-            setError(result.error)
+        const { error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+        })
+
+        if (error) {
+            setError(error.message)
             setLoading(false)
+        } else {
+            router.push('/')
+            router.refresh()
         }
     }
 

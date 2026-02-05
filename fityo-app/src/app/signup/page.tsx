@@ -1,14 +1,17 @@
 'use client'
 
 import { useState } from 'react'
-import { signUp } from '@/lib/actions/auth'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 import { motion } from 'framer-motion'
 import { Mail, Lock, ArrowRight, Loader2, User } from 'lucide-react'
 
 export default function SignupPage() {
     const [error, setError] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
+    const router = useRouter()
+    const supabase = createClient()
 
     async function handleSubmit(formData: FormData) {
         setLoading(true)
@@ -29,11 +32,18 @@ export default function SignupPage() {
             return
         }
 
-        const result = await signUp(formData)
+        const email = formData.get('email') as string
+        const { error: signUpError } = await supabase.auth.signUp({
+            email,
+            password,
+        })
 
-        if (result?.error) {
-            setError(result.error)
+        if (signUpError) {
+            setError(signUpError.message)
             setLoading(false)
+        } else {
+            router.push('/')
+            router.refresh()
         }
     }
 
